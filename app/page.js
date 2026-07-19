@@ -18,7 +18,8 @@ import {
 } from "../lib/plan";
 
 const ULOZ = "stredomorsky-plan-v1";
-const BARVY = { bilkoviny: "#2e6f76", sacharidy: "#e4a11b", tuky: "#6b7f3e" };
+const BARVY = { bilkoviny: "#0d5eaf", sacharidy: "#f0b429", tuky: "#12a09b" };
+const BARVA_TYPU = { snidane: "#f0b429", svacina: "#12a09b", obed: "#0d5eaf", vecere: "#062e5c" };
 
 function nactiUlozene() {
   if (typeof window === "undefined") return null;
@@ -29,39 +30,74 @@ function nactiUlozene() {
   }
 }
 
-/* Mozaikový pásek: 20 dlaždic v poměru energie z bílkovin, sacharidů a tuků */
-function Mozaika({ m }) {
+/* ---------- Řecká vlajka: 9 pruhů, kříž v kantonu ---------- */
+function Vlajka({ className = "flag" }) {
+  return (
+    <svg className={className} viewBox="0 0 27 18" role="img" aria-label="Řecká vlajka">
+      <rect width="27" height="18" fill="#fff" />
+      {[0, 4, 8, 12, 16].map((y) => (
+        <rect key={y} y={y} width="27" height="2" fill="#0d5eaf" />
+      ))}
+      <rect width="10" height="10" fill="#0d5eaf" />
+      <rect x="4" width="2" height="10" fill="#fff" />
+      <rect y="4" width="10" height="2" fill="#fff" />
+    </svg>
+  );
+}
+
+/* ---------- Kroužek plnění kalorií ---------- */
+function Krouzek({ hodnota, cil, velikost = 76 }) {
+  const r = velikost / 2 - 7;
+  const obvod = 2 * Math.PI * r;
+  const pomer = Math.min(1.25, cil ? hodnota / cil : 0);
+  const barva = pomer > 1.12 || pomer < 0.85 ? "#e2574c" : "#0d5eaf";
+  return (
+    <svg className="ring" width={velikost} height={velikost} viewBox={`0 0 ${velikost} ${velikost}`}>
+      <circle cx={velikost / 2} cy={velikost / 2} r={r} fill="none" stroke="#e9f1fc" strokeWidth="8" />
+      <circle
+        cx={velikost / 2}
+        cy={velikost / 2}
+        r={r}
+        fill="none"
+        stroke={barva}
+        strokeWidth="8"
+        strokeLinecap="round"
+        strokeDasharray={`${Math.min(1, pomer) * obvod} ${obvod}`}
+        transform={`rotate(-90 ${velikost / 2} ${velikost / 2})`}
+      />
+      <text
+        x="50%"
+        y="52%"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize="16"
+        fontWeight="800"
+        fill="#0b1b2b"
+      >
+        {Math.round(pomer * 100)}%
+      </text>
+    </svg>
+  );
+}
+
+/* ---------- Pruh rozložení maker ---------- */
+function MakroPruh({ m }) {
   const e = { bilkoviny: m.bilkoviny * 4, sacharidy: m.sacharidy * 4, tuky: m.tuky * 9 };
   const soucet = e.bilkoviny + e.sacharidy + e.tuky || 1;
-  const pocty = {
-    bilkoviny: Math.round((e.bilkoviny / soucet) * 20),
-    sacharidy: Math.round((e.sacharidy / soucet) * 20),
-  };
-  pocty.tuky = 20 - pocty.bilkoviny - pocty.sacharidy;
-  const dlazdice = [];
-  ["bilkoviny", "sacharidy", "tuky"].forEach((k) => {
-    for (let i = 0; i < Math.max(0, pocty[k]); i++) {
-      dlazdice.push(<i key={k + i} className="tile" style={{ "--tile": BARVY[k] }} />);
-    }
-  });
   return (
     <>
-      <div className="mosaic" aria-hidden="true">
-        {dlazdice}
+      <div className="bar" aria-hidden="true">
+        {["bilkoviny", "sacharidy", "tuky"].map((k) => (
+          <i key={k} style={{ width: `${(e[k] / soucet) * 100}%`, background: BARVY[k] }} />
+        ))}
       </div>
-      <div className="mosaic-legend">
-        <span>
-          <i className="dot" style={{ background: BARVY.bilkoviny }} />
-          bílkoviny {m.bilkoviny} g
-        </span>
-        <span>
-          <i className="dot" style={{ background: BARVY.sacharidy }} />
-          sacharidy {m.sacharidy} g
-        </span>
-        <span>
-          <i className="dot" style={{ background: BARVY.tuky }} />
-          tuky {m.tuky} g
-        </span>
+      <div className="legend">
+        {["bilkoviny", "sacharidy", "tuky"].map((k) => (
+          <span key={k}>
+            <i className="dot" style={{ background: BARVY[k] }} />
+            {k[0].toUpperCase() + k.slice(1)} <b>{m[k]} g</b>
+          </span>
+        ))}
       </div>
     </>
   );
@@ -104,11 +140,23 @@ export default function Page() {
 
   return (
     <>
-      <header className="top">
+      <header className="hero">
         <div className="wrap">
-          <div className="eyebrow">28 dní · 27 receptů · 2 talíře</div>
+          <div className="hero-top">
+            <Vlajka />
+            <div className="eyebrow">Ελληνική διατροφή · jídelníček pro dva</div>
+          </div>
           <h1>Středomořský plán</h1>
-          <p>Jídelníček pro vás dva, počítaný na vaše makra a nakoupitelný v Rohlíku, Lidlu i Makru.</p>
+          <p className="lead">
+            Čtyři týdny jídel v řeckém duchu, spočítané na vaše makra a nakoupitelné v Rohlíku,
+            Lidlu i Makru.
+          </p>
+          <div className="chips">
+            <span className="chip">{RECIPES.length} receptů</span>
+            <span className="chip">28 dní</span>
+            <span className="chip">Vysoký příjem bílkovin</span>
+            <span className="chip">Nákup na klik</span>
+          </div>
         </div>
       </header>
 
@@ -163,7 +211,6 @@ export default function Page() {
               <MesicView
                 plan={plan}
                 start={start}
-                cile={cile}
                 naDen={(i) => {
                   setDen(i);
                   setZalozka("den");
@@ -198,28 +245,45 @@ export default function Page() {
   );
 }
 
+/* ---------------- JÍDLO V SEZNAMU ---------------- */
+
+function JidloRadek({ recept, typ, onClick }) {
+  const t = typ || recept.typ;
+  return (
+    <button className="meal" onClick={onClick}>
+      <span className="meal-mark" style={{ background: BARVA_TYPU[t] }} />
+      <span className="meal-body">
+        <span className="meal-type" style={{ color: BARVA_TYPU[t] }}>{TYPY[t]}</span>
+        <span className="meal-name">{recept.nazev}</span>
+        <span className="tags">
+          <span className="tag">{recept.cas} min</span>
+          <span className="tag">{recept.shop}</span>
+          <span className="tag">{recept.bilkoviny} g bílkovin</span>
+        </span>
+      </span>
+      <span className="meal-macros">
+        <b>{recept.kcal}</b>
+        kcal
+      </span>
+    </button>
+  );
+}
+
 /* ---------------- DEN ---------------- */
 
 function DenView({ den, setDen, plan, start, profily, cile, nasobky, zaklad, otevri }) {
-  const datum = datumDne(start, den);
   return (
     <>
-      <div className="card">
+      <div className="card raised">
         <div className="daynav">
           <button className="ghost" onClick={() => setDen(Math.max(0, den - 1))} disabled={den === 0}>
             ← Včera
           </button>
-          <div style={{ textAlign: "center" }}>
-            <div className="eyebrow" style={{ color: "var(--muted)" }}>
-              Den {den + 1} / 28
-            </div>
-            <strong style={{ textTransform: "capitalize" }}>{formatDatum(datum)}</strong>
+          <div className="mid">
+            <div className="eyebrow">Den {den + 1} z 28</div>
+            <strong>{formatDatum(datumDne(start, den))}</strong>
           </div>
-          <button
-            className="ghost"
-            onClick={() => setDen(Math.min(27, den + 1))}
-            disabled={den === 27}
-          >
+          <button className="ghost" onClick={() => setDen(Math.min(27, den + 1))} disabled={den === 27}>
             Zítra →
           </button>
         </div>
@@ -233,20 +297,24 @@ function DenView({ den, setDen, plan, start, profily, cile, nasobky, zaklad, ote
           const bilkOk = m.bilkoviny >= c.bilkoviny * 0.9;
           return (
             <div className="card" key={p.id}>
-              <div className="eyebrow" style={{ color: "var(--muted)" }}>
-                {p.jmeno} · porce ×{nasobky[i].toFixed(2)}
+              <div className="person-head">
+                <Krouzek hodnota={m.kcal} cil={c.kcal} />
+                <div>
+                  <div className="person-name">{p.jmeno}</div>
+                  <div className="kcal-line">porce ×{nasobky[i].toFixed(2)}</div>
+                  <div className="stat" style={{ marginTop: 8 }}>
+                    {m.kcal} <small>/ {c.kcal} kcal</small>
+                  </div>
+                </div>
               </div>
-              <div className="kcal">
-                {m.kcal} <span className="unit">kcal / cíl {c.kcal}</span>
-              </div>
-              <Mozaika m={m} />
+              <MakroPruh m={m} />
               <p className="sub">
-                <span className={Math.abs(rozdil) <= 120 ? "diff-ok" : "diff-off"}>
+                <span className={Math.abs(rozdil) <= 120 ? "ok" : "off"}>
                   {rozdil >= 0 ? "+" : ""}
                   {rozdil} kcal
                 </span>{" "}
-                ·{" "}
-                <span className={bilkOk ? "diff-ok" : "diff-off"}>
+                oproti cíli ·{" "}
+                <span className={bilkOk ? "ok" : "off"}>
                   bílkoviny {m.bilkoviny} / {c.bilkoviny} g
                 </span>
               </p>
@@ -258,24 +326,14 @@ function DenView({ den, setDen, plan, start, profily, cile, nasobky, zaklad, ote
       <div className="card">
         <h2>Co se dneska vaří</h2>
         <p className="sub">Klikni na jídlo a dostaneš postup i navážku pro oba.</p>
-        {PORADI.map((typ) => {
-          const r = byId(plan[den][typ]);
-          return (
-            <button className="meal" key={typ} onClick={() => otevri(r.id)}>
-              <span>
-                <span className="meal-type">{TYPY[typ]}</span>
-                <div className="meal-name">{r.nazev}</div>
-                <span className="pill">{r.cas} min</span>{" "}
-                <span className="pill">{r.shop}</span>
-              </span>
-              <span className="meal-macros">
-                {r.kcal} kcal
-                <br />
-                {r.bilkoviny} g B
-              </span>
-            </button>
-          );
-        })}
+        {PORADI.map((typ) => (
+          <JidloRadek
+            key={typ}
+            typ={typ}
+            recept={byId(plan[den][typ])}
+            onClick={() => otevri(plan[den][typ])}
+          />
+        ))}
       </div>
     </>
   );
@@ -283,27 +341,18 @@ function DenView({ den, setDen, plan, start, profily, cile, nasobky, zaklad, ote
 
 /* ---------------- MĚSÍC ---------------- */
 
-function MesicView({ plan, start, cile, naDen }) {
+function MesicView({ plan, start, naDen }) {
   const [tyden, setTyden] = useState(0);
   return (
     <>
-      <div className="card">
+      <div className="card raised">
         <h2>Celý měsíc</h2>
         <p className="sub">
-          Čtyři týdny, recepty se vracejí zhruba po dvou týdnech — dost na rutinu, málo na nudu.
+          Čtyři týdny. Recepty se vracejí zhruba po dvou týdnech — dost na rutinu, málo na nudu.
         </p>
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row" style={{ marginTop: 14 }}>
           {[0, 1, 2, 3].map((t) => (
-            <button
-              key={t}
-              className="ghost"
-              onClick={() => setTyden(t)}
-              style={
-                tyden === t
-                  ? { background: "var(--ink)", color: "#fff", borderColor: "var(--ink)" }
-                  : undefined
-              }
-            >
+            <button key={t} className="ghost" data-on={tyden === t} onClick={() => setTyden(t)}>
               {t + 1}. týden
             </button>
           ))}
@@ -315,17 +364,15 @@ function MesicView({ plan, start, cile, naDen }) {
         return (
           <div className="card" key={d}>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong style={{ textTransform: "capitalize" }}>{formatDatum(datumDne(start, d))}</strong>
+              <strong style={{ textTransform: "capitalize", fontSize: 16 }}>
+                {formatDatum(datumDne(start, d))}
+              </strong>
               <button className="ghost" onClick={() => naDen(d)}>
                 Otevřít den
               </button>
             </div>
-            <p className="sub" style={{ marginTop: 8 }}>
-              {PORADI.map((t) => byId(plan[d][t]).nazev).join(" · ")}
-            </p>
-            <p className="sub">
-              Základní porce: {m.kcal} kcal, {m.bilkoviny} g bílkovin
-            </p>
+            <MakroPruh m={m} />
+            <p className="sub">{PORADI.map((t) => byId(plan[d][t]).nazev).join(" · ")}</p>
           </div>
         );
       })}
@@ -336,36 +383,30 @@ function MesicView({ plan, start, cile, naDen }) {
 /* ---------------- NÁKUP ---------------- */
 
 function NakupView({ plan, tyden, setTyden, cile, odskrtnuto, setOdskrtnuto }) {
-  const nasobky = useMemo(() => {
-    // průměrný násobek porcí přes týden pro každého člověka
-    return cile.map((c) => {
-      let s = 0;
-      for (let d = tyden * 7; d < tyden * 7 + 7; d++) s += porce(plan[d], c.kcal);
-      return s / 7;
-    });
-  }, [plan, tyden, cile]);
+  const nasobky = useMemo(
+    () =>
+      cile.map((c) => {
+        let s = 0;
+        for (let d = tyden * 7; d < tyden * 7 + 7; d++) s += porce(plan[d], c.kcal);
+        return s / 7;
+      }),
+    [plan, tyden, cile]
+  );
 
   const skupiny = useMemo(() => nakupniSeznam(plan, tyden, nasobky), [plan, tyden, nasobky]);
+  const pocet = Object.values(skupiny).reduce((a, g) => a + g.length, 0);
 
   return (
     <>
-      <div className="card">
+      <div className="card raised">
         <h2>Nákup na týden</h2>
         <p className="sub">
-          Sečteno pro oba, včetně vašich porcí. Trvanlivé věci klidně kupujte na celý měsíc.
+          {pocet} položek sečtených pro oba, včetně velikosti vašich porcí. Trvanlivé věci klidně
+          kupujte rovnou na celý měsíc.
         </p>
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row" style={{ marginTop: 14 }}>
           {[0, 1, 2, 3].map((t) => (
-            <button
-              key={t}
-              className="ghost"
-              onClick={() => setTyden(t)}
-              style={
-                tyden === t
-                  ? { background: "var(--ink)", color: "#fff", borderColor: "var(--ink)" }
-                  : undefined
-              }
-            >
+            <button key={t} className="ghost" data-on={tyden === t} onClick={() => setTyden(t)}>
               {t + 1}. týden
             </button>
           ))}
@@ -397,12 +438,14 @@ function NakupView({ plan, tyden, setTyden, cile, odskrtnuto, setOdskrtnuto }) {
         ))}
         <button
           className="ghost"
-          style={{ marginTop: 16 }}
-          onClick={() => setOdskrtnuto((o) => {
-            const n = { ...o };
-            Object.keys(n).forEach((k) => k.startsWith(tyden + "|") && delete n[k]);
-            return n;
-          })}
+          style={{ marginTop: 18 }}
+          onClick={() =>
+            setOdskrtnuto((o) => {
+              const n = { ...o };
+              Object.keys(n).forEach((k) => k.startsWith(tyden + "|") && delete n[k]);
+              return n;
+            })
+          }
         >
           Zrušit odškrtnutí
         </button>
@@ -415,43 +458,37 @@ function NakupView({ plan, tyden, setTyden, cile, odskrtnuto, setOdskrtnuto }) {
 
 function ReceptyView({ otevri }) {
   const [filtr, setFiltr] = useState("vse");
-  const seznam = RECIPES.filter((r) => filtr === "vse" || r.typ === filtr);
+  const [hledat, setHledat] = useState("");
+  const seznam = RECIPES.filter(
+    (r) =>
+      (filtr === "vse" || r.typ === filtr) &&
+      r.nazev.toLowerCase().includes(hledat.toLowerCase().trim())
+  );
   return (
     <>
-      <div className="card">
-        <h2>Všechny recepty</h2>
+      <div className="card raised">
+        <h2>Receptář</h2>
+        <p className="sub">{RECIPES.length} jednoduchých jídel, žádné na víc než 45 minut.</p>
+        <input
+          placeholder="Hledat recept…"
+          value={hledat}
+          onChange={(e) => setHledat(e.target.value)}
+          style={{ marginTop: 14 }}
+        />
         <div className="row" style={{ marginTop: 12 }}>
           {[["vse", "Vše"], ...Object.entries(TYPY)].map(([k, l]) => (
-            <button
-              key={k}
-              className="ghost"
-              onClick={() => setFiltr(k)}
-              style={
-                filtr === k
-                  ? { background: "var(--ink)", color: "#fff", borderColor: "var(--ink)" }
-                  : undefined
-              }
-            >
+            <button key={k} className="ghost" data-on={filtr === k} onClick={() => setFiltr(k)}>
               {l}
             </button>
           ))}
         </div>
       </div>
       <div className="card">
-        {seznam.map((r) => (
-          <button className="meal" key={r.id} onClick={() => otevri(r.id)}>
-            <span>
-              <span className="meal-type">{TYPY[r.typ]}</span>
-              <div className="meal-name">{r.nazev}</div>
-              <span className="pill">{r.cas} min</span> <span className="pill">{r.shop}</span>
-            </span>
-            <span className="meal-macros">
-              {r.kcal} kcal
-              <br />
-              {r.bilkoviny} g B
-            </span>
-          </button>
-        ))}
+        {seznam.length === 0 ? (
+          <p className="sub">Nic takového tu není. Zkuste kratší slovo, třeba „losos“.</p>
+        ) : (
+          seznam.map((r) => <JidloRadek key={r.id} recept={r} onClick={() => otevri(r.id)} />)
+        )}
       </div>
     </>
   );
@@ -461,36 +498,35 @@ function ReceptyView({ otevri }) {
 
 function Recept({ recept, nasobky, profily, zpet }) {
   const celkem = nasobky.reduce((a, b) => a + b, 0);
-  const m = {
-    kcal: recept.kcal,
-    bilkoviny: recept.bilkoviny,
-    sacharidy: recept.sacharidy,
-    tuky: recept.tuky,
-  };
   return (
-    <div className="card">
-      <button className="recipe-back" onClick={zpet}>
+    <div className="card raised">
+      <button className="back" onClick={zpet}>
         ← Zpět
       </button>
-      <div className="eyebrow" style={{ color: "var(--muted)", marginTop: 10 }}>
-        {TYPY[recept.typ]} · {recept.cas} min · {recept.shop}
+      <div className="meal-type" style={{ marginTop: 14 }}>
+        {TYPY[recept.typ]}
       </div>
       <h2 style={{ marginTop: 6 }}>{recept.nazev}</h2>
-      <div className="kcal" style={{ marginTop: 10 }}>
-        {recept.kcal} <span className="unit">kcal na základní porci</span>
+      <div className="tags">
+        <span className="tag">{recept.cas} min</span>
+        <span className="tag">Nakoupíte: {recept.shop}</span>
       </div>
-      <Mozaika m={m} />
+      <div className="stat" style={{ marginTop: 16 }}>
+        {recept.kcal} <small>kcal na základní porci</small>
+      </div>
+      <MakroPruh m={recept} />
 
-      <h3 style={{ marginTop: 20 }}>Navážka pro oba</h3>
+      <h3 style={{ marginTop: 24 }}>Navážka pro oba</h3>
       <p className="sub">
         {profily.map((p, i) => `${p.jmeno} ×${nasobky[i].toFixed(2)}`).join(", ")} — dohromady ×
         {celkem.toFixed(2)} základní porce.
       </p>
       <ul className="ing">
         {recept.suroviny.map((s) => {
-          const q = s.u === "ks" || s.u === "stroužek"
-            ? Math.round(s.q * celkem * 4) / 4
-            : Math.round((s.q * celkem) / 5) * 5;
+          const q =
+            s.u === "ks" || s.u === "stroužek"
+              ? Math.round(s.q * celkem * 4) / 4
+              : Math.round((s.q * celkem) / 5) * 5;
           return (
             <li key={s.n}>
               <span>{s.n}</span>
@@ -502,7 +538,7 @@ function Recept({ recept, nasobky, profily, zpet }) {
         })}
       </ul>
 
-      <h3 style={{ marginTop: 20 }}>Postup</h3>
+      <h3 style={{ marginTop: 24 }}>Postup</h3>
       <ol className="steps">
         {recept.postup.map((k, i) => (
           <li key={i}>{k}</li>
@@ -517,7 +553,7 @@ function Recept({ recept, nasobky, profily, zpet }) {
 function MakraView({ profily, cile, uprav, start, setStart }) {
   return (
     <>
-      <div className="card">
+      <div className="card raised">
         <h2>Nastavení maker</h2>
         <p className="sub">
           Počítáme podle Mifflin–St Jeor: klidový výdej × aktivita, pak úprava podle cíle. Tuky
@@ -547,27 +583,15 @@ function MakraView({ profily, cile, uprav, start, setStart }) {
               </label>
               <label className="field">
                 Věk
-                <input
-                  type="number"
-                  value={p.vek}
-                  onChange={(e) => uprav(i, "vek", Number(e.target.value))}
-                />
+                <input type="number" value={p.vek} onChange={(e) => uprav(i, "vek", Number(e.target.value))} />
               </label>
               <label className="field">
                 Výška (cm)
-                <input
-                  type="number"
-                  value={p.vyska}
-                  onChange={(e) => uprav(i, "vyska", Number(e.target.value))}
-                />
+                <input type="number" value={p.vyska} onChange={(e) => uprav(i, "vyska", Number(e.target.value))} />
               </label>
               <label className="field">
                 Váha (kg)
-                <input
-                  type="number"
-                  value={p.vaha}
-                  onChange={(e) => uprav(i, "vaha", Number(e.target.value))}
-                />
+                <input type="number" value={p.vaha} onChange={(e) => uprav(i, "vaha", Number(e.target.value))} />
               </label>
             </div>
             <label className="field">
@@ -602,14 +626,12 @@ function MakraView({ profily, cile, uprav, start, setStart }) {
               </label>
             </div>
 
-            <div style={{ marginTop: 18, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-              <div className="eyebrow" style={{ color: "var(--muted)" }}>
-                Denní cíl · výdej {c.tdee} kcal
+            <div style={{ marginTop: 20, borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+              <div className="meal-type">Denní cíl · výdej {c.tdee} kcal</div>
+              <div className="stat" style={{ marginTop: 8 }}>
+                {c.kcal} <small>kcal</small>
               </div>
-              <div className="kcal">
-                {c.kcal} <span className="unit">kcal</span>
-              </div>
-              <Mozaika m={c} />
+              <MakroPruh m={c} />
             </div>
           </div>
         );
