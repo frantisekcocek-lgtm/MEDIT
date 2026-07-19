@@ -9,7 +9,7 @@ nastavení se ukládá do localStorage prohlížeče.
   (porce se škáluje tak, aby seděl kalorický cíl).
 - **Měsíc** — 28 dní dopředu, recepty se vracejí zhruba po dvou týdnech.
 - **Nákup** — týdenní seznam sečtený pro oba, seřazený podle regálů, s odškrtáváním.
-- **Recepty** — 27 receptů se surovinami, postupem a makry.
+- **Recepty** — 56 receptů se surovinami, postupem a makry.
 - **Makra** — Mifflin–St Jeor výpočet výdeje, cíl (hubnutí/udržení/nabírání),
   bílkoviny na kg, tuky 30 % energie, zbytek sacharidy.
 
