@@ -131,11 +131,21 @@ export default function Page() {
 
   const plan = useMemo(() => generujPlan(28), []);
 
+  // Uložená data mohou být z jiné verze nebo poškozená — bereme jen to, co dává smysl
   const pouzij = (u) => {
-    if (!u) return;
-    if (u.profily) setProfily(u.profily.map(migruj));
-    if (u.start) setStart(u.start);
-    if (u.odskrtnuto) setOdskrtnuto(u.odskrtnuto);
+    if (!u || typeof u !== "object") return;
+    try {
+      if (Array.isArray(u.profily) && u.profily.length) {
+        const ciste = u.profily
+          .filter((p) => p && typeof p === "object" && Number(p.vaha) > 0 && Number(p.vyska) > 0)
+          .map((p) => migruj(p));
+        if (ciste.length) setProfily(ciste);
+      }
+      if (typeof u.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(u.start)) setStart(u.start);
+      if (u.odskrtnuto && typeof u.odskrtnuto === "object") setOdskrtnuto(u.odskrtnuto);
+    } catch (e) {
+      console.error("Uložená data se nepodařilo načíst:", e);
+    }
   };
 
   // Načtení: nejdřív prohlížeč (okamžitě), pak databáze (má přednost)
