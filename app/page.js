@@ -21,6 +21,13 @@ const ULOZ = "stredomorsky-plan-v1";
 const BARVY = { bilkoviny: "#0d5eaf", sacharidy: "#f0b429", tuky: "#12a09b" };
 const BARVA_TYPU = { snidane: "#f0b429", svacina: "#12a09b", obed: "#0d5eaf", vecere: "#062e5c" };
 
+/* Navážka: kusy po čtvrtinách, malé množství po gramu, zbytek po pěti */
+function zaokrouhli(q, u) {
+  if (u === "ks" || u === "stroužek") return Math.round(q * 4) / 4;
+  if (q < 20) return Math.round(q);
+  return Math.round(q / 5) * 5;
+}
+
 function nactiUlozene() {
   if (typeof window === "undefined") return null;
   try {
@@ -247,7 +254,7 @@ export default function Page() {
 
 /* ---------------- JÍDLO V SEZNAMU ---------------- */
 
-function JidloRadek({ recept, typ, onClick }) {
+function JidloRadek({ recept, typ, onClick, profily, nasobky }) {
   const t = typ || recept.typ;
   return (
     <button className="meal" onClick={onClick}>
@@ -258,12 +265,19 @@ function JidloRadek({ recept, typ, onClick }) {
         <span className="tags">
           <span className="tag">{recept.cas} min</span>
           <span className="tag">{recept.shop}</span>
-          <span className="tag">{recept.bilkoviny} g bílkovin</span>
+          {profily
+            ? profily.map((p, i) => (
+                <span className="tag strong" key={p.id}>
+                  {p.jmeno} {Math.round(recept.kcal * nasobky[i])} kcal ·{" "}
+                  {Math.round(recept.bilkoviny * nasobky[i])} g B
+                </span>
+              ))
+            : <span className="tag">{recept.bilkoviny} g bílkovin</span>}
         </span>
       </span>
       <span className="meal-macros">
         <b>{recept.kcal}</b>
-        kcal
+        kcal / porce
       </span>
     </button>
   );
@@ -331,6 +345,8 @@ function DenView({ den, setDen, plan, start, profily, cile, nasobky, zaklad, ote
             key={typ}
             typ={typ}
             recept={byId(plan[den][typ])}
+            profily={profily}
+            nasobky={nasobky}
             onClick={() => otevri(plan[den][typ])}
           />
         ))}
@@ -516,27 +532,52 @@ function Recept({ recept, nasobky, profily, zpet }) {
       </div>
       <MakroPruh m={recept} />
 
-      <h3 style={{ marginTop: 24 }}>Navážka pro oba</h3>
-      <p className="sub">
-        {profily.map((p, i) => `${p.jmeno} ×${nasobky[i].toFixed(2)}`).join(", ")} — dohromady ×
-        {celkem.toFixed(2)} základní porce.
-      </p>
-      <ul className="ing">
-        {recept.suroviny.map((s) => {
-          const q =
-            s.u === "ks" || s.u === "stroužek"
-              ? Math.round(s.q * celkem * 4) / 4
-              : Math.round((s.q * celkem) / 5) * 5;
+      <h3 style={{ marginTop: 24 }}>Kolik si kdo nabere</h3>
+      <div className="portion-cards">
+        {profily.map((p, i) => {
+          const m = skaluj(recept, nasobky[i]);
           return (
-            <li key={s.n}>
-              <span>{s.n}</span>
-              <span>
-                {q} {s.u}
-              </span>
-            </li>
+            <div className="portion" key={p.id}>
+              <div className="portion-name">{p.jmeno}</div>
+              <div className="portion-mult">×{nasobky[i].toFixed(2)} porce</div>
+              <div className="portion-kcal">{m.kcal} kcal</div>
+              <div className="portion-macros">
+                {m.bilkoviny} g B · {m.sacharidy} g S · {m.tuky} g T
+              </div>
+            </div>
           );
         })}
-      </ul>
+      </div>
+
+      <h3 style={{ marginTop: 24 }}>Suroviny</h3>
+      <p className="sub">Vážte dohromady a rozdělte podle sloupců, nebo si každý navažte to svoje.</p>
+      <table className="ing-table">
+        <thead>
+          <tr>
+            <th>Surovina</th>
+            {profily.map((p) => (
+              <th key={p.id}>{p.jmeno}</th>
+            ))}
+            <th>Celkem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {recept.suroviny.map((s) => (
+            <tr key={s.n}>
+              <td>{s.n}</td>
+              {nasobky.map((n, i) => (
+                <td key={i}>
+                  {zaokrouhli(s.q * n, s.u)} {s.u}
+                </td>
+              ))}
+              <td className="total">
+                {Math.round(nasobky.reduce((a, n) => a + zaokrouhli(s.q * n, s.u), 0) * 100) / 100}{" "}
+                {s.u}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <h3 style={{ marginTop: 24 }}>Postup</h3>
       <ol className="steps">
