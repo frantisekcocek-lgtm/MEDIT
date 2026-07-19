@@ -5,6 +5,8 @@ import { RECIPES, TYPY, byId } from "../lib/recipes";
 import {
   AKTIVITA,
   CILE,
+  KOJENI,
+  migruj,
   PORADI,
   VYCHOZI_PROFILY,
   datumDne,
@@ -18,6 +20,11 @@ import {
 } from "../lib/plan";
 
 const ULOZ = "stredomorsky-plan-v1";
+const ULOZ_KOD = "stredomorsky-plan-kod";
+
+function novyKod() {
+  return "dom-" + Math.random().toString(36).slice(2, 8);
+}
 const BARVY = { bilkoviny: "#0d5eaf", sacharidy: "#f0b429", tuky: "#12a09b" };
 const BARVA_TYPU = { snidane: "#f0b429", svacina: "#12a09b", obed: "#0d5eaf", vecere: "#062e5c" };
 
@@ -119,23 +126,79 @@ export default function Page() {
   const [odskrtnuto, setOdskrtnuto] = useState({});
   const [otevrenyRecept, setOtevrenyRecept] = useState(null);
   const [nacteno, setNacteno] = useState(false);
+  const [kod, setKod] = useState("");
+  const [stav, setStav] = useState("nacitam");
 
   const plan = useMemo(() => generujPlan(28), []);
 
+  const pouzij = (u) => {
+    if (!u) return;
+    if (u.profily) setProfily(u.profily.map(migruj));
+    if (u.start) setStart(u.start);
+    if (u.odskrtnuto) setOdskrtnuto(u.odskrtnuto);
+  };
+
+  // Načtení: nejdřív prohlížeč (okamžitě), pak databáze (má přednost)
   useEffect(() => {
-    const u = nactiUlozene();
-    if (u) {
-      if (u.profily) setProfily(u.profily);
-      if (u.start) setStart(u.start);
-      if (u.odskrtnuto) setOdskrtnuto(u.odskrtnuto);
+    pouzij(nactiUlozene());
+    let ulozenyKod = window.localStorage.getItem(ULOZ_KOD);
+    if (!ulozenyKod) {
+      ulozenyKod = novyKod();
+      window.localStorage.setItem(ULOZ_KOD, ulozenyKod);
     }
-    setNacteno(true);
+    setKod(ulozenyKod);
+
+    fetch("/api/data?id=" + encodeURIComponent(ulozenyKod))
+      .then((r) => r.json())
+      .then((o) => {
+        if (o.ok) {
+          pouzij(o.data);
+          setStav("ulozeno");
+        } else {
+          setStav(o.duvod === "nenastaveno" ? "lokalne" : "chyba");
+        }
+      })
+      .catch(() => setStav("chyba"))
+      .finally(() => setNacteno(true));
   }, []);
 
+  // Ukládání: prohlížeč hned, databáze se zpožděním
   useEffect(() => {
     if (!nacteno) return;
-    window.localStorage.setItem(ULOZ, JSON.stringify({ profily, start, odskrtnuto }));
-  }, [profily, start, odskrtnuto, nacteno]);
+    const data = { profily, start, odskrtnuto };
+    window.localStorage.setItem(ULOZ, JSON.stringify(data));
+    if (!kod || stav === "lokalne") return;
+
+    setStav("ukladam");
+    const casovac = setTimeout(() => {
+      fetch("/api/data?id=" + encodeURIComponent(kod), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+        .then((r) => r.json())
+        .then((o) => setStav(o.ok ? "ulozeno" : o.duvod === "nenastaveno" ? "lokalne" : "chyba"))
+        .catch(() => setStav("chyba"));
+    }, 900);
+    return () => clearTimeout(casovac);
+  }, [profily, start, odskrtnuto, nacteno, kod]);
+
+  // Ruční přepnutí na jiný kód domácnosti (párování druhého telefonu)
+  const zmenKod = (novy) => {
+    if (!novy) return;
+    window.localStorage.setItem(ULOZ_KOD, novy);
+    setKod(novy);
+    setStav("nacitam");
+    fetch("/api/data?id=" + encodeURIComponent(novy))
+      .then((r) => r.json())
+      .then((o) => {
+        if (o.ok) {
+          pouzij(o.data);
+          setStav("ulozeno");
+        } else setStav(o.duvod === "nenastaveno" ? "lokalne" : "chyba");
+      })
+      .catch(() => setStav("chyba"));
+  };
 
   const cile = profily.map(spocitejMakra);
   const dnesniDen = plan[den];
@@ -242,6 +305,9 @@ export default function Page() {
                 uprav={upravProfil}
                 start={start}
                 setStart={setStart}
+                kod={kod}
+                zmenKod={zmenKod}
+                stav={stav}
               />
             )}
           </>
@@ -591,14 +657,25 @@ function Recept({ recept, nasobky, profily, zpet }) {
 
 /* ---------------- MAKRA ---------------- */
 
-function MakraView({ profily, cile, uprav, start, setStart }) {
+function MakraView({ profily, cile, uprav, start, setStart, kod, zmenKod, stav }) {
+  const [novyKodText, setNovyKodText] = useState("");
+
+  const popisStavu = {
+    nacitam: ["Načítám z databáze…", "var(--muted)"],
+    ukladam: ["Ukládám…", "var(--muted)"],
+    ulozeno: ["Uloženo v databázi", "#15803d"],
+    lokalne: ["Databáze není nastavená — data jsou jen v tomhle prohlížeči", "#b45309"],
+    chyba: ["Databáze neodpovídá, data zatím drží jen prohlížeč", "var(--rose)"],
+  }[stav] || ["", "var(--muted)"];
+
   return (
     <>
       <div className="card raised">
         <h2>Nastavení maker</h2>
         <p className="sub">
-          Počítáme podle Mifflin–St Jeor: klidový výdej × aktivita, pak úprava podle cíle. Tuky
-          držíme na 30 % energie, bílkoviny podle váhy, zbytek jsou sacharidy.
+          Klidový výdej podle Mifflin–St Jeor × aktivita, plus přirážka za kojení. Cíl zadáváte
+          rychlostí hubnutí — kilo tuku odpovídá zhruba 7 700 kcal, takže půl kila týdně znamená
+          550 kcal denně pod výdejem.
         </p>
         <label className="field">
           První den plánu
@@ -606,8 +683,32 @@ function MakraView({ profily, cile, uprav, start, setStart }) {
         </label>
       </div>
 
+      <div className="card">
+        <h3>Ukládání dat</h3>
+        <p className="sub" style={{ color: popisStavu[1], fontWeight: 600 }}>
+          {popisStavu[0]}
+        </p>
+        <p className="sub">
+          Kód domácnosti: <strong>{kod || "…"}</strong>. Zadejte ho ve druhém telefonu a uvidíte
+          stejná data.
+        </p>
+        <div className="row" style={{ marginTop: 12 }}>
+          <input
+            placeholder="Připojit se ke kódu…"
+            value={novyKodText}
+            onChange={(e) => setNovyKodText(e.target.value)}
+            style={{ flex: 1, minWidth: 180 }}
+          />
+          <button className="ghost" onClick={() => zmenKod(novyKodText.trim())}>
+            Připojit
+          </button>
+        </div>
+      </div>
+
       {profily.map((p, i) => {
         const c = cile[i];
+        const kojici = p.kojeni && p.kojeni !== "ne";
+        const rychleKojeni = kojici && Number(p.ubytek) > 0.5;
         return (
           <div className="card" key={p.id}>
             <label className="field">
@@ -645,13 +746,26 @@ function MakraView({ profily, cile, uprav, start, setStart }) {
                 ))}
               </select>
             </label>
+            {p.pohlavi === "zena" && (
+              <label className="field">
+                Kojení
+                <select value={p.kojeni || "ne"} onChange={(e) => uprav(i, "kojeni", e.target.value)}>
+                  {KOJENI.map((k) => (
+                    <option key={k.v} value={k.v}>
+                      {k.label}
+                      {k.kcal ? ` (+${k.kcal} kcal)` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="inline-fields">
               <label className="field">
                 Cíl
-                <select value={p.cil} onChange={(e) => uprav(i, "cil", e.target.value)}>
-                  {Object.entries(CILE).map(([k, l]) => (
-                    <option key={k} value={k}>
-                      {l}
+                <select value={p.ubytek} onChange={(e) => uprav(i, "ubytek", e.target.value)}>
+                  {CILE.map((k) => (
+                    <option key={k.v} value={k.v}>
+                      {k.label}
                     </option>
                   ))}
                 </select>
@@ -667,16 +781,42 @@ function MakraView({ profily, cile, uprav, start, setStart }) {
               </label>
             </div>
 
+            {rychleKojeni && (
+              <div className="varovani">
+                Při kojení tříměsíčního dítěte je tempo nad 0,5 kg týdně rizikové — mléka bývá
+                méně. Držte se raději 0,25–0,5 kg.
+              </div>
+            )}
+            {c.omezeno && (
+              <div className="varovani">
+                Zvolené tempo by znamenalo příjem pod {c.min} kcal, takže appka zastavila na téhle
+                hranici. Reálně z toho vyjde asi {c.skutecnyUbytek} kg týdně.
+              </div>
+            )}
+
             <div style={{ marginTop: 20, borderTop: "1px solid var(--line)", paddingTop: 16 }}>
-              <div className="meal-type">Denní cíl · výdej {c.tdee} kcal</div>
+              <div className="meal-type">
+                Denní cíl · výdej {c.tdee} kcal
+                {c.kojeniKcal ? ` + ${c.kojeniKcal} kcal na kojení` : ""}
+              </div>
               <div className="stat" style={{ marginTop: 8 }}>
-                {c.kcal} <small>kcal</small>
+                {c.kcal} <small>kcal · tempo {c.skutecnyUbytek} kg/týden</small>
               </div>
               <MakroPruh m={c} />
             </div>
           </div>
         );
       })}
+
+      <div className="card">
+        <h3>Proč tu není 2 kg týdně</h3>
+        <p className="sub">
+          Dvě kila týdně znamenají schodek přes 2 000 kcal denně. To u naprosté většiny lidí
+          nevychází ani při nulovém příjmu a co ubyde, je z velké části svalovina a voda. Nejrychlejší
+          nabízená volba je 1 kg týdně a i tu berte jako krátkodobou. Kojící ženě appka nedovolí
+          klesnout pod 1 800 kcal.
+        </p>
+      </div>
     </>
   );
 }

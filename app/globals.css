@@ -737,3 +737,14 @@ ul.ing li span:last-child {
     padding-left: 6px;
   }
 }
+
+.varovani {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: #fff8e6;
+  border: 1px solid #f3d18a;
+  color: #8a5a00;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
