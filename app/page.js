@@ -127,7 +127,8 @@ export default function Page() {
   const [vlastni, setVlastni] = useState({});
   const [otevrenyRecept, setOtevrenyRecept] = useState(null);
   const [nacteno, setNacteno] = useState(false);
-  const [kod, setKod] = useState("");
+  const [ucet, setUcet] = useState(null); // { email, domacnost }
+  const [rezim, setRezim] = useState("nacitam"); // nacitam | lokalne | prihlaseni | aplikace
   const [stav, setStav] = useState("nacitam");
 
   const planAuto = useMemo(() => generujPlan(28), []);
@@ -154,67 +155,75 @@ export default function Page() {
     }
   };
 
-  // Načtení: nejdřív prohlížeč (okamžitě), pak databáze (má přednost)
-  useEffect(() => {
-    pouzij(nactiUlozene());
-    let ulozenyKod = window.localStorage.getItem(ULOZ_KOD);
-    if (!ulozenyKod) {
-      ulozenyKod = novyKod();
-      window.localStorage.setItem(ULOZ_KOD, ulozenyKod);
-    }
-    setKod(ulozenyKod);
-
-    fetch("/api/data?id=" + encodeURIComponent(ulozenyKod))
+  const nactiZeServeru = () =>
+    fetch("/api/data")
       .then((r) => r.json())
       .then((o) => {
         if (o.ok) {
           pouzij(o.data);
           setStav("ulozeno");
-        } else {
-          setStav(o.duvod === "nenastaveno" ? "lokalne" : "chyba");
-        }
+        } else setStav(o.duvod === "neprihlasen" ? "lokalne" : "chyba");
       })
-      .catch(() => setStav("chyba"))
+      .catch(() => setStav("chyba"));
+
+  // Načtení: prohlížeč hned, pak server podle přihlášení
+  useEffect(() => {
+    pouzij(nactiUlozene());
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((o) => {
+        if (!o.ok && o.duvod === "nenastaveno") {
+          setRezim("lokalne");
+          setStav("lokalne");
+          return;
+        }
+        if (o.prihlasen) {
+          setUcet({ email: o.email, domacnost: o.domacnost });
+          setRezim("aplikace");
+          return nactiZeServeru();
+        }
+        setRezim("prihlaseni");
+      })
+      .catch(() => {
+        setRezim("lokalne");
+        setStav("chyba");
+      })
       .finally(() => setNacteno(true));
   }, []);
 
-  // Ukládání: prohlížeč hned, databáze se zpožděním
+  // Ukládání: prohlížeč hned, server se zpožděním
   useEffect(() => {
     if (!nacteno) return;
     const data = { profily, start, odskrtnuto, vlastni };
     window.localStorage.setItem(ULOZ, JSON.stringify(data));
-    if (!kod || stav === "lokalne") return;
+    if (rezim !== "aplikace") return;
 
     setStav("ukladam");
     const casovac = setTimeout(() => {
-      fetch("/api/data?id=" + encodeURIComponent(kod), {
+      fetch("/api/data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       })
         .then((r) => r.json())
-        .then((o) => setStav(o.ok ? "ulozeno" : o.duvod === "nenastaveno" ? "lokalne" : "chyba"))
+        .then((o) => setStav(o.ok ? "ulozeno" : "chyba"))
         .catch(() => setStav("chyba"));
     }, 900);
     return () => clearTimeout(casovac);
-  }, [profily, start, odskrtnuto, vlastni, nacteno, kod]);
+  }, [profily, start, odskrtnuto, vlastni, nacteno, rezim]);
 
-  // Ruční přepnutí na jiný kód domácnosti (párování druhého telefonu)
-  const zmenKod = (novy) => {
-    if (!novy) return;
-    window.localStorage.setItem(ULOZ_KOD, novy);
-    setKod(novy);
-    setStav("nacitam");
-    fetch("/api/data?id=" + encodeURIComponent(novy))
-      .then((r) => r.json())
-      .then((o) => {
-        if (o.ok) {
-          pouzij(o.data);
-          setStav("ulozeno");
-        } else setStav(o.duvod === "nenastaveno" ? "lokalne" : "chyba");
-      })
-      .catch(() => setStav("chyba"));
+  const poPrihlaseni = (u) => {
+    setUcet(u);
+    setRezim("aplikace");
+    nactiZeServeru();
   };
+
+  const odhlasit = () =>
+    fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+      setUcet(null);
+      setRezim("prihlaseni");
+      setStav("nacitam");
+    });
 
   const cile = profily.map(spocitejMakra);
   const dnesniDen = plan[den];
@@ -265,7 +274,13 @@ export default function Page() {
       </nav>
 
       <main className="wrap">
-        {otevrenyRecept ? (
+        {rezim === "prihlaseni" ? (
+          <Prihlaseni hotovo={poPrihlaseni} />
+        ) : rezim === "nacitam" ? (
+          <div className="card raised">
+            <p className="sub">Načítám…</p>
+          </div>
+        ) : otevrenyRecept ? (
           <Recept
             recept={byId(otevrenyRecept)}
             nasobky={nasobky}
@@ -320,8 +335,9 @@ export default function Page() {
                 uprav={upravProfil}
                 start={start}
                 setStart={setStart}
-                kod={kod}
-                zmenKod={zmenKod}
+                ucet={ucet}
+                odhlasit={odhlasit}
+                rezim={rezim}
                 stav={stav}
               />
             )}
@@ -330,6 +346,100 @@ export default function Page() {
         <p className="footer-note">Data zůstávají v tomhle prohlížeči. Nikam se neodesílají.</p>
       </main>
     </>
+  );
+}
+
+
+/* ---------------- PŘIHLÁŠENÍ ---------------- */
+
+function Prihlaseni({ hotovo }) {
+  const [novy, setNovy] = useState(false);
+  const [email, setEmail] = useState("");
+  const [heslo, setHeslo] = useState("");
+  const [pozvanka, setPozvanka] = useState("");
+  const [chyba, setChyba] = useState("");
+  const [ceka, setCeka] = useState(false);
+
+  const odesli = async () => {
+    setChyba("");
+    setCeka(true);
+    try {
+      const r = await fetch(novy ? "/api/auth/register" : "/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, heslo, pozvanka: pozvanka.trim() || undefined }),
+      });
+      const o = await r.json();
+      if (o.ok) hotovo({ email: o.email, domacnost: o.domacnost });
+      else setChyba(o.chyba || "Něco se nepovedlo, zkuste to znovu.");
+    } catch (e) {
+      setChyba("Server neodpovídá.");
+    } finally {
+      setCeka(false);
+    }
+  };
+
+  return (
+    <div className="card raised prihlaseni">
+      <h2>{novy ? "Založit účet" : "Přihlásit se"}</h2>
+      <p className="sub">
+        {novy
+          ? "Účet drží jídelníček, makra i nákup na serveru. Máte-li kód domácnosti od partnera, vyplňte ho a budete mít stejná data."
+          : "Jídelníček se načte na jakémkoli zařízení."}
+      </p>
+
+      <label className="field">
+        E-mail
+        <input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && odesli()}
+        />
+      </label>
+      <label className="field">
+        Heslo
+        <input
+          type="password"
+          autoComplete={novy ? "new-password" : "current-password"}
+          value={heslo}
+          onChange={(e) => setHeslo(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && odesli()}
+        />
+      </label>
+      {novy && (
+        <label className="field">
+          Kód domácnosti (nepovinné)
+          <input placeholder="dom-…" value={pozvanka} onChange={(e) => setPozvanka(e.target.value)} />
+        </label>
+      )}
+
+      {chyba && <div className="varovani">{chyba}</div>}
+
+      <button
+        className="ghost"
+        data-on="true"
+        style={{ marginTop: 18, width: "100%" }}
+        disabled={ceka}
+        onClick={odesli}
+      >
+        {ceka ? "Moment…" : novy ? "Vytvořit účet" : "Přihlásit se"}
+      </button>
+
+      <p className="sub" style={{ marginTop: 14, textAlign: "center" }}>
+        {novy ? "Účet už máte? " : "Ještě nemáte účet? "}
+        <button
+          className="back"
+          onClick={() => {
+            setNovy(!novy);
+            setChyba("");
+          }}
+        >
+          {novy ? "Přihlásit se" : "Založit ho"}
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -953,14 +1063,14 @@ function Recept({ recept, nasobky, profily, zpet }) {
 
 /* ---------------- MAKRA ---------------- */
 
-function MakraView({ profily, cile, uprav, start, setStart, kod, zmenKod, stav }) {
-  const [novyKodText, setNovyKodText] = useState("");
+function MakraView({ profily, cile, uprav, start, setStart, ucet, odhlasit, rezim, stav }) {
+  const [zkopirovano, setZkopirovano] = useState(false);
 
   const popisStavu = {
     nacitam: ["Načítám z databáze…", "var(--muted)"],
     ukladam: ["Ukládám…", "var(--muted)"],
     ulozeno: ["Uloženo v databázi", "#15803d"],
-    lokalne: ["Databáze není nastavená — data jsou jen v tomhle prohlížeči", "#b45309"],
+    lokalne: ["Data jsou jen v tomhle prohlížeči", "#b45309"],
     chyba: ["Databáze neodpovídá, data zatím drží jen prohlížeč", "var(--rose)"],
   }[stav] || ["", "var(--muted)"];
 
@@ -980,25 +1090,40 @@ function MakraView({ profily, cile, uprav, start, setStart, kod, zmenKod, stav }
       </div>
 
       <div className="card">
-        <h3>Ukládání dat</h3>
-        <p className="sub" style={{ color: popisStavu[1], fontWeight: 600 }}>
-          {popisStavu[0]}
-        </p>
-        <p className="sub">
-          Kód domácnosti: <strong>{kod || "…"}</strong>. Zadejte ho ve druhém telefonu a uvidíte
-          stejná data.
-        </p>
-        <div className="row" style={{ marginTop: 12 }}>
-          <input
-            placeholder="Připojit se ke kódu…"
-            value={novyKodText}
-            onChange={(e) => setNovyKodText(e.target.value)}
-            style={{ flex: 1, minWidth: 180 }}
-          />
-          <button className="ghost" onClick={() => zmenKod(novyKodText.trim())}>
-            Připojit
-          </button>
-        </div>
+        <h3>Účet a ukládání</h3>
+        <p className="sub" style={{ color: popisStavu[1], fontWeight: 600 }}>{popisStavu[0]}</p>
+
+        {rezim === "aplikace" && ucet ? (
+          <>
+            <p className="sub">
+              Přihlášen jako <strong>{ucet.email}</strong>. Data leží na serveru, takže je uvidíte
+              i v jiném prohlížeči nebo telefonu.
+            </p>
+            <p className="sub">
+              Kód domácnosti: <strong>{ucet.domacnost}</strong> — s ním se manželka zaregistruje a
+              uvidí stejný jídelníček.
+            </p>
+            <div className="row" style={{ marginTop: 12 }}>
+              <button
+                className="ghost"
+                onClick={() => {
+                  if (navigator.clipboard) navigator.clipboard.writeText(ucet.domacnost);
+                  setZkopirovano(true);
+                }}
+              >
+                {zkopirovano ? "Zkopírováno" : "Zkopírovat kód"}
+              </button>
+              <button className="ghost" onClick={odhlasit}>
+                Odhlásit se
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="sub">
+            Databáze zatím není zapojená, takže data zůstávají jen v tomhle prohlížeči. Návod na
+            zapnutí je v README — pár minut práce a přibude přihlášení.
+          </p>
+        )}
       </div>
 
       {profily.map((p, i) => {

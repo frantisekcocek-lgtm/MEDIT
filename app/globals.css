@@ -1023,3 +1023,16 @@ ul.ing li span:last-child {
   font-style: normal;
   margin-left: 4px;
 }
+
+.prihlaseni {
+  max-width: 420px;
+  margin: 40px auto 0;
+}
+
+.prihlaseni h2 {
+  text-align: center;
+}
+
+.prihlaseni > .sub {
+  text-align: center;
+}
