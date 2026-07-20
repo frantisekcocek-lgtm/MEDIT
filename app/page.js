@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RECIPES, TYPY, byId } from "../lib/recipes";
+import { RECIPES, STITKY, STITKY_PRO_TYP, TYPY, byId, stitek } from "../lib/recipes";
 import {
   AKTIVITA,
   CILE,
@@ -118,7 +118,7 @@ function MakroPruh({ m }) {
 }
 
 export default function Page() {
-  const [zalozka, setZalozka] = useState("den");
+  const [zalozka, setZalozka] = useState("planovac");
   const [profily, setProfily] = useState(VYCHOZI_PROFILY);
   const [start, setStart] = useState(() => new Date().toISOString().slice(0, 10));
   const [den, setDen] = useState(0);
@@ -234,24 +234,17 @@ export default function Page() {
           </div>
           <h1>Středomořský plán</h1>
           <p className="lead">
-            Čtyři týdny jídel v řeckém duchu, spočítané na vaše makra a nakoupitelné v Rohlíku,
-            Lidlu i Makru.
+            Sestavte si jídelníček z {RECIPES.length} receptů — přetažením do kalendáře. Makra i
+            nákupní seznam se přepočítají samy.
           </p>
-          <div className="chips">
-            <span className="chip">{RECIPES.length} receptů</span>
-            <span className="chip">28 dní</span>
-            <span className="chip">Vysoký příjem bílkovin</span>
-            <span className="chip">Nákup na klik</span>
-          </div>
         </div>
       </header>
 
       <nav className="tabs">
         <div className="tabs-inner">
           {[
-            ["den", "Den"],
-            ["plan", "Měsíc"],
             ["planovac", "Plánovač"],
+            ["den", "Dnes"],
             ["nakup", "Nákup"],
             ["recepty", "Recepty"],
             ["makra", "Makra"],
@@ -294,16 +287,6 @@ export default function Page() {
                 otevri={setOtevrenyRecept}
               />
             )}
-            {zalozka === "plan" && (
-              <MesicView
-                plan={plan}
-                start={start}
-                naDen={(i) => {
-                  setDen(i);
-                  setZalozka("den");
-                }}
-              />
-            )}
             {zalozka === "planovac" && (
               <PlanovacView
                 plan={plan}
@@ -311,6 +294,12 @@ export default function Page() {
                 vlastni={vlastni}
                 setVlastni={setVlastni}
                 start={start}
+                profily={profily}
+                cile={cile}
+                otevriDen={(i) => {
+                  setDen(i);
+                  setZalozka("den");
+                }}
               />
             )}
             {zalozka === "nakup" && (
@@ -357,6 +346,7 @@ function JidloRadek({ recept, typ, onClick, profily, nasobky }) {
         <span className="tags">
           <span className="tag">{recept.cas} min</span>
           <span className="tag">{recept.shop}</span>
+          {stitek(recept) && <span className="tag">{STITKY[stitek(recept)]}</span>}
           {profily
             ? profily.map((p, i) => (
                 <span className="tag strong" key={p.id}>
@@ -447,51 +437,9 @@ function DenView({ den, setDen, plan, start, profily, cile, nasobky, zaklad, ote
   );
 }
 
-/* ---------------- MĚSÍC ---------------- */
-
-function MesicView({ plan, start, naDen }) {
-  const [tyden, setTyden] = useState(0);
-  return (
-    <>
-      <div className="card raised">
-        <h2>Celý měsíc</h2>
-        <p className="sub">
-          Čtyři týdny. Recepty se vracejí zhruba po dvou týdnech — dost na rutinu, málo na nudu.
-        </p>
-        <div className="row" style={{ marginTop: 14 }}>
-          {[0, 1, 2, 3].map((t) => (
-            <button key={t} className="ghost" data-on={tyden === t} onClick={() => setTyden(t)}>
-              {t + 1}. týden
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {Array.from({ length: 7 }, (_, i) => tyden * 7 + i).map((d) => {
-        const m = makraDne(plan[d]);
-        return (
-          <div className="card" key={d}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong style={{ textTransform: "capitalize", fontSize: 16 }}>
-                {formatDatum(datumDne(start, d))}
-              </strong>
-              <button className="ghost" onClick={() => naDen(d)}>
-                Otevřít den
-              </button>
-            </div>
-            <MakroPruh m={m} />
-            <p className="sub">{PORADI.map((t) => byId(plan[d][t]).nazev).join(" · ")}</p>
-          </div>
-        );
-      })}
-    </>
-  );
-}
-
-
 /* ---------------- PLÁNOVAČ (drag & drop / ťuk–ťuk) ---------------- */
 
-function PlanovacView({ plan, planAuto, vlastni, setVlastni, start }) {
+function PlanovacView({ plan, planAuto, vlastni, setVlastni, start, profily, cile, otevriDen }) {
   const [tyden, setTyden] = useState(0);
   const [vybrany, setVybrany] = useState(null); // recept "v ruce" pro dotykové ovládání
   const [filtr, setFiltr] = useState("vse");
@@ -500,11 +448,26 @@ function PlanovacView({ plan, planAuto, vlastni, setVlastni, start }) {
   const [tazeny, setTazeny] = useState(null); // { id, x, y } během přetahování
   const drag = useRef({ id: null, x: 0, y: 0, aktivni: false, casovac: null, pohnuto: false });
 
+  const [podfiltr, setPodfiltr] = useState("vse");
+
+  const dostupneStitky =
+    filtr === "vse"
+      ? ["sladke", "slane", "bezmase", "kure", "ryba", "maso"]
+      : STITKY_PRO_TYP[filtr] || [];
+
   const nabidka = RECIPES.filter(
     (r) =>
       (filtr === "vse" || r.typ === filtr) &&
+      (podfiltr === "vse" || stitek(r) === podfiltr) &&
       r.nazev.toLowerCase().includes(hledat.toLowerCase().trim())
   );
+
+  const prepniTyp = (t) => {
+    setFiltr(t);
+    if (t !== "vse" && podfiltr !== "vse" && !(STITKY_PRO_TYP[t] || []).includes(podfiltr)) {
+      setPodfiltr("vse");
+    }
+  };
 
   const poloz = (den, typ, idReceptu) => {
     if (!idReceptu) return;
@@ -637,7 +600,26 @@ function PlanovacView({ plan, planAuto, vlastni, setVlastni, start }) {
       <div className="card">
         {Array.from({ length: 7 }, (_, i) => tyden * 7 + i).map((d) => (
           <div className="plan-den" key={d}>
-            <div className="plan-datum">{formatDatum(datumDne(start, d))}</div>
+            <div className="plan-hlavicka">
+              <div className="plan-datum">{formatDatum(datumDne(start, d))}</div>
+              <div className="plan-souhrn">
+                {profily.map((os, i) => {
+                  const zaklad = makraDne(plan[d]);
+                  const n = porce(plan[d], cile[i].kcal);
+                  const m = skaluj(zaklad, n);
+                  const bilkOk = m.bilkoviny >= cile[i].bilkoviny * 0.9;
+                  return (
+                    <span key={os.id} className="souhrn-osoba">
+                      <b>{os.jmeno}</b> {m.kcal} kcal
+                      <i className={bilkOk ? "ok" : "off"}> {m.bilkoviny} g B</i>
+                    </span>
+                  );
+                })}
+                <button className="ghost maly" onClick={() => otevriDen(d)}>
+                  Detail
+                </button>
+              </div>
+            </div>
             <div className="plan-sloty">
               {PORADI.map((typ) => {
                 const r = byId(plan[d][typ]);
@@ -690,13 +672,31 @@ function PlanovacView({ plan, planAuto, vlastni, setVlastni, start }) {
           onChange={(e) => setHledat(e.target.value)}
           style={{ marginTop: 12 }}
         />
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="filtr-radek">
           {[["vse", "Vše"], ...Object.entries(TYPY)].map(([k, l]) => (
-            <button key={k} className="ghost" data-on={filtr === k} onClick={() => setFiltr(k)}>
+            <button key={k} className="ghost maly" data-on={filtr === k} onClick={() => prepniTyp(k)}>
               {l}
             </button>
           ))}
         </div>
+        <div className="filtr-radek">
+          <button className="ghost maly" data-on={podfiltr === "vse"} onClick={() => setPodfiltr("vse")}>
+            Bez omezení
+          </button>
+          {dostupneStitky.map((k) => (
+            <button
+              key={k}
+              className="ghost maly"
+              data-on={podfiltr === k}
+              onClick={() => setPodfiltr(podfiltr === k ? "vse" : k)}
+            >
+              {STITKY[k]}
+            </button>
+          ))}
+        </div>
+        <p className="sub" style={{ marginTop: 10 }}>
+          {nabidka.length} {nabidka.length === 1 ? "recept" : nabidka.length < 5 ? "recepty" : "receptů"}
+        </p>
         <div className="paleta">
           {nabidka.map((r) => (
             <button
@@ -711,6 +711,7 @@ function PlanovacView({ plan, planAuto, vlastni, setVlastni, start }) {
             >
               <span className="dlazdice-typ" style={{ color: BARVA_TYPU[r.typ] }}>
                 {TYPY[r.typ]}
+                {stitek(r) ? " · " + STITKY[stitek(r)] : ""}
               </span>
               <span className="dlazdice-nazev">{r.nazev}</span>
               <span className="dlazdice-kcal">
@@ -803,10 +804,18 @@ function NakupView({ plan, tyden, setTyden, cile, odskrtnuto, setOdskrtnuto }) {
 
 function ReceptyView({ otevri }) {
   const [filtr, setFiltr] = useState("vse");
+  const [podfiltr, setPodfiltr] = useState("vse");
   const [hledat, setHledat] = useState("");
+
+  const dostupneStitky =
+    filtr === "vse"
+      ? ["sladke", "slane", "bezmase", "kure", "ryba", "maso"]
+      : STITKY_PRO_TYP[filtr] || [];
+
   const seznam = RECIPES.filter(
     (r) =>
       (filtr === "vse" || r.typ === filtr) &&
+      (podfiltr === "vse" || stitek(r) === podfiltr) &&
       r.nazev.toLowerCase().includes(hledat.toLowerCase().trim())
   );
   return (
@@ -820,13 +829,37 @@ function ReceptyView({ otevri }) {
           onChange={(e) => setHledat(e.target.value)}
           style={{ marginTop: 14 }}
         />
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="filtr-radek">
           {[["vse", "Vše"], ...Object.entries(TYPY)].map(([k, l]) => (
-            <button key={k} className="ghost" data-on={filtr === k} onClick={() => setFiltr(k)}>
+            <button
+              key={k}
+              className="ghost maly"
+              data-on={filtr === k}
+              onClick={() => {
+                setFiltr(k);
+                setPodfiltr("vse");
+              }}
+            >
               {l}
             </button>
           ))}
         </div>
+        <div className="filtr-radek">
+          <button className="ghost maly" data-on={podfiltr === "vse"} onClick={() => setPodfiltr("vse")}>
+            Bez omezení
+          </button>
+          {dostupneStitky.map((k) => (
+            <button
+              key={k}
+              className="ghost maly"
+              data-on={podfiltr === k}
+              onClick={() => setPodfiltr(podfiltr === k ? "vse" : k)}
+            >
+              {STITKY[k]}
+            </button>
+          ))}
+        </div>
+        <p className="sub" style={{ marginTop: 10 }}>Nalezeno: {seznam.length}</p>
       </div>
       <div className="card">
         {seznam.length === 0 ? (

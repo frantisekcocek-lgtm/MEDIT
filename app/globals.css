@@ -79,7 +79,7 @@ button {
   overflow: hidden;
   background: linear-gradient(155deg, #0d5eaf 0%, #0a4a8b 45%, #062e5c 100%);
   color: #fff;
-  padding: 30px 0 34px;
+  padding: 20px 0 22px;
 }
 
 /* devět pruhů vlajky jako světelná textura pozadí */
@@ -130,12 +130,12 @@ button {
 }
 
 .hero h1 {
-  font-size: clamp(28px, 6vw, 42px);
-  margin-top: 16px;
+  font-size: clamp(24px, 4.6vw, 32px);
+  margin-top: 12px;
 }
 
 .hero p.lead {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: #c5daf3;
   max-width: 52ch;
   font-size: 15px;
@@ -976,4 +976,50 @@ ul.ing li span:last-child {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     max-height: 380px;
   }
+}
+
+/* ---------------- PLÁNOVAČ: FILTRY A SOUHRNY ---------------- */
+
+.filtr-radek {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.ghost.maly {
+  padding: 5px 12px;
+  font-size: 12.5px;
+}
+
+.plan-hlavicka {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.plan-datum {
+  margin-bottom: 0;
+}
+
+.plan-souhrn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.souhrn-osoba b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.souhrn-osoba i {
+  font-style: normal;
+  margin-left: 4px;
 }
