@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RECIPES, TYPY, byId } from "../lib/recipes";
 import {
   AKTIVITA,
@@ -124,12 +124,17 @@ export default function Page() {
   const [den, setDen] = useState(0);
   const [tyden, setTyden] = useState(0);
   const [odskrtnuto, setOdskrtnuto] = useState({});
+  const [vlastni, setVlastni] = useState({});
   const [otevrenyRecept, setOtevrenyRecept] = useState(null);
   const [nacteno, setNacteno] = useState(false);
   const [kod, setKod] = useState("");
   const [stav, setStav] = useState("nacitam");
 
-  const plan = useMemo(() => generujPlan(28), []);
+  const planAuto = useMemo(() => generujPlan(28), []);
+  const plan = useMemo(
+    () => planAuto.map((d, i) => ({ ...d, ...(vlastni[i] || {}) })),
+    [planAuto, vlastni]
+  );
 
   // Uložená data mohou být z jiné verze nebo poškozená — bereme jen to, co dává smysl
   const pouzij = (u) => {
@@ -143,6 +148,7 @@ export default function Page() {
       }
       if (typeof u.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(u.start)) setStart(u.start);
       if (u.odskrtnuto && typeof u.odskrtnuto === "object") setOdskrtnuto(u.odskrtnuto);
+      if (u.vlastni && typeof u.vlastni === "object") setVlastni(u.vlastni);
     } catch (e) {
       console.error("Uložená data se nepodařilo načíst:", e);
     }
@@ -175,7 +181,7 @@ export default function Page() {
   // Ukládání: prohlížeč hned, databáze se zpožděním
   useEffect(() => {
     if (!nacteno) return;
-    const data = { profily, start, odskrtnuto };
+    const data = { profily, start, odskrtnuto, vlastni };
     window.localStorage.setItem(ULOZ, JSON.stringify(data));
     if (!kod || stav === "lokalne") return;
 
@@ -191,7 +197,7 @@ export default function Page() {
         .catch(() => setStav("chyba"));
     }, 900);
     return () => clearTimeout(casovac);
-  }, [profily, start, odskrtnuto, nacteno, kod]);
+  }, [profily, start, odskrtnuto, vlastni, nacteno, kod]);
 
   // Ruční přepnutí na jiný kód domácnosti (párování druhého telefonu)
   const zmenKod = (novy) => {
@@ -245,6 +251,7 @@ export default function Page() {
           {[
             ["den", "Den"],
             ["plan", "Měsíc"],
+            ["planovac", "Plánovač"],
             ["nakup", "Nákup"],
             ["recepty", "Recepty"],
             ["makra", "Makra"],
@@ -295,6 +302,15 @@ export default function Page() {
                   setDen(i);
                   setZalozka("den");
                 }}
+              />
+            )}
+            {zalozka === "planovac" && (
+              <PlanovacView
+                plan={plan}
+                planAuto={planAuto}
+                vlastni={vlastni}
+                setVlastni={setVlastni}
+                start={start}
               />
             )}
             {zalozka === "nakup" && (
@@ -468,6 +484,243 @@ function MesicView({ plan, start, naDen }) {
           </div>
         );
       })}
+    </>
+  );
+}
+
+
+/* ---------------- PLÁNOVAČ (drag & drop / ťuk–ťuk) ---------------- */
+
+function PlanovacView({ plan, planAuto, vlastni, setVlastni, start }) {
+  const [tyden, setTyden] = useState(0);
+  const [vybrany, setVybrany] = useState(null); // recept "v ruce" pro dotykové ovládání
+  const [filtr, setFiltr] = useState("vse");
+  const [hledat, setHledat] = useState("");
+  const [cil, setCil] = useState(null); // zvýrazněné políčko při přetahování
+  const [tazeny, setTazeny] = useState(null); // { id, x, y } během přetahování
+  const drag = useRef({ id: null, x: 0, y: 0, aktivni: false, casovac: null, pohnuto: false });
+
+  const nabidka = RECIPES.filter(
+    (r) =>
+      (filtr === "vse" || r.typ === filtr) &&
+      r.nazev.toLowerCase().includes(hledat.toLowerCase().trim())
+  );
+
+  const poloz = (den, typ, idReceptu) => {
+    if (!idReceptu) return;
+    setVlastni((v) => ({ ...v, [den]: { ...(v[den] || {}), [typ]: idReceptu } }));
+    setVybrany(null);
+  };
+
+  const vratAutomat = (den, typ) =>
+    setVlastni((v) => {
+      const denni = { ...(v[den] || {}) };
+      delete denni[typ];
+      const novy = { ...v };
+      if (Object.keys(denni).length) novy[den] = denni;
+      else delete novy[den];
+      return novy;
+    });
+
+  const resetTydne = () =>
+    setVlastni((v) => {
+      const novy = { ...v };
+      for (let d = tyden * 7; d < tyden * 7 + 7; d++) delete novy[d];
+      return novy;
+    });
+
+  // Přetahování postavené na pointer eventech, aby fungovalo i na dotykovém displeji.
+  // Myš táhne hned, prst až po krátkém přidržení — jinak by nešlo scrollovat.
+  const zacniTah = (e, id) => {
+    if (e.button === 1 || e.button === 2) return;
+    const d = drag.current;
+    d.id = id;
+    d.x = e.clientX;
+    d.y = e.clientY;
+    d.aktivni = false;
+    d.pohnuto = false;
+    const spustit = () => {
+      d.aktivni = true;
+      document.body.style.touchAction = "none";
+      document.body.style.userSelect = "none";
+      setTazeny({ id, x: d.x, y: d.y });
+    };
+    if (e.pointerType === "mouse") d.aktivni = true;
+    else d.casovac = setTimeout(spustit, 220);
+  };
+
+  useEffect(() => {
+    const pohyb = (e) => {
+      const d = drag.current;
+      if (!d.id) return;
+      const vzdalenost = Math.hypot(e.clientX - d.x, e.clientY - d.y);
+      if (!d.aktivni) {
+        if (vzdalenost > 10) {
+          clearTimeout(d.casovac); // prst scrolluje, tah rušíme
+          d.id = null;
+        }
+        return;
+      }
+      if (vzdalenost > 6) d.pohnuto = true;
+      if (!tazeny) setTazeny({ id: d.id, x: e.clientX, y: e.clientY });
+      else setTazeny((t) => ({ ...t, x: e.clientX, y: e.clientY }));
+
+      const pod = document.elementFromPoint(e.clientX, e.clientY);
+      const slot = pod && pod.closest ? pod.closest("[data-slot]") : null;
+      setCil(slot ? slot.getAttribute("data-slot").replace("|", "-") : null);
+    };
+
+    const konec = (e) => {
+      const d = drag.current;
+      clearTimeout(d.casovac);
+      if (d.id && d.aktivni && d.pohnuto) {
+        const pod = document.elementFromPoint(e.clientX, e.clientY);
+        const slot = pod && pod.closest ? pod.closest("[data-slot]") : null;
+        if (slot) {
+          const [den, typ] = slot.getAttribute("data-slot").split("|");
+          poloz(Number(den), typ, d.id);
+        }
+      }
+      document.body.style.touchAction = "";
+      document.body.style.userSelect = "";
+      drag.current = { id: null, x: 0, y: 0, aktivni: false, casovac: null, pohnuto: d.pohnuto };
+      setTazeny(null);
+      setCil(null);
+      setTimeout(() => (drag.current.pohnuto = false), 0);
+    };
+
+    window.addEventListener("pointermove", pohyb);
+    window.addEventListener("pointerup", konec);
+    window.addEventListener("pointercancel", konec);
+    return () => {
+      window.removeEventListener("pointermove", pohyb);
+      window.removeEventListener("pointerup", konec);
+      window.removeEventListener("pointercancel", konec);
+    };
+  }, [tazeny]);
+
+  const upravenych = Object.keys(vlastni).length;
+
+  return (
+    <>
+      <div className="card raised">
+        <h2>Plánovač</h2>
+        <p className="sub">
+          Myší přetáhněte recept na políčko. Na mobilu ťukněte na recept a pak na políčko, kam patří.
+          Co nezměníte, zůstává podle automatického plánu.
+        </p>
+        <div className="row" style={{ marginTop: 14 }}>
+          {[0, 1, 2, 3].map((t) => (
+            <button key={t} className="ghost" data-on={tyden === t} onClick={() => setTyden(t)}>
+              {t + 1}. týden
+            </button>
+          ))}
+          <button className="ghost" onClick={resetTydne} style={{ marginLeft: "auto" }}>
+            Vrátit týden do původního stavu
+          </button>
+        </div>
+        {upravenych > 0 && (
+          <p className="sub">Ručně upravených dnů: {upravenych}.</p>
+        )}
+      </div>
+
+      {vybrany && (
+        <div className="drzeny">
+          V ruce máte <strong>{byId(vybrany).nazev}</strong> — ťukněte na políčko, kam ho chcete dát.
+          <button className="ghost" onClick={() => setVybrany(null)}>
+            Zrušit
+          </button>
+        </div>
+      )}
+
+      <div className="planovac-layout">
+      <div className="card">
+        {Array.from({ length: 7 }, (_, i) => tyden * 7 + i).map((d) => (
+          <div className="plan-den" key={d}>
+            <div className="plan-datum">{formatDatum(datumDne(start, d))}</div>
+            <div className="plan-sloty">
+              {PORADI.map((typ) => {
+                const r = byId(plan[d][typ]);
+                const zmeneno = plan[d][typ] !== planAuto[d][typ];
+                const aktivni = cil === d + "-" + typ;
+                return (
+                  <div
+                    key={typ}
+                    className="slot"
+                    data-aktivni={aktivni}
+                    data-zmeneno={zmeneno}
+                    data-slot={d + "|" + typ}
+                    onClick={() => vybrany && poloz(d, typ, vybrany)}
+                    role={vybrany ? "button" : undefined}
+                  >
+                    <div className="slot-typ">{TYPY[typ]}</div>
+                    <div className="slot-nazev">{r.nazev}</div>
+                    <div className="slot-kcal">{r.kcal} kcal · {r.bilkoviny} g B</div>
+                    {zmeneno && (
+                      <button
+                        className="slot-zpet"
+                        title="Vrátit původní jídlo"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          vratAutomat(d, typ);
+                        }}
+                      >
+                        ↺
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {tazeny && (
+        <div className="duch" style={{ left: tazeny.x, top: tazeny.y }}>
+          {byId(tazeny.id).nazev}
+        </div>
+      )}
+
+      <div className="card paleta-panel">
+        <h3>Zásobník receptů</h3>
+        <input
+          placeholder="Hledat recept…"
+          value={hledat}
+          onChange={(e) => setHledat(e.target.value)}
+          style={{ marginTop: 12 }}
+        />
+        <div className="row" style={{ marginTop: 12 }}>
+          {[["vse", "Vše"], ...Object.entries(TYPY)].map(([k, l]) => (
+            <button key={k} className="ghost" data-on={filtr === k} onClick={() => setFiltr(k)}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div className="paleta">
+          {nabidka.map((r) => (
+            <button
+              key={r.id}
+              className="dlazdice"
+              data-vybrany={vybrany === r.id}
+              onPointerDown={(e) => zacniTah(e, r.id)}
+              onClick={() => {
+                if (drag.current.pohnuto) return; // byl to tah, ne ťuknutí
+                setVybrany(vybrany === r.id ? null : r.id);
+              }}
+            >
+              <span className="dlazdice-typ" style={{ color: BARVA_TYPU[r.typ] }}>
+                {TYPY[r.typ]}
+              </span>
+              <span className="dlazdice-nazev">{r.nazev}</span>
+              <span className="dlazdice-kcal">
+                {r.kcal} kcal · {r.bilkoviny} g B
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      </div>
     </>
   );
 }

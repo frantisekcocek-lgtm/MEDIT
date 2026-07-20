@@ -748,3 +748,232 @@ ul.ing li span:last-child {
   font-size: 13.5px;
   line-height: 1.5;
 }
+
+/* ---------------- PLÁNOVAČ ---------------- */
+
+.plan-den + .plan-den {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-datum {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  text-transform: capitalize;
+  margin-bottom: 10px;
+}
+
+.plan-sloty {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 760px) {
+  .plan-sloty {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.slot {
+  position: relative;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: #fbfdff;
+  min-height: 88px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.slot[role="button"] {
+  cursor: pointer;
+}
+
+.slot[role="button"]:hover,
+.slot[data-aktivni="true"] {
+  border-color: var(--blue);
+  background: var(--sky);
+  transform: translateY(-2px);
+}
+
+.slot[data-zmeneno="true"] {
+  border-style: solid;
+  border-color: rgba(13, 94, 175, 0.45);
+  background: #fff;
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.slot-typ {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.slot-nazev {
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+.slot-kcal {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.slot-zpet {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sky);
+  color: var(--blue);
+  font-size: 13px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.slot-zpet:hover {
+  background: var(--blue);
+  color: #fff;
+}
+
+.drzeny {
+  position: sticky;
+  top: 64px;
+  z-index: 25;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--blue);
+  color: #fff;
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  box-shadow: var(--sh-blue);
+  font-size: 13.5px;
+}
+
+.drzeny .ghost {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+.paleta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.dlazdice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+  cursor: grab;
+  transition: all 0.15s ease;
+}
+
+.dlazdice:hover {
+  border-color: var(--blue);
+  transform: translateY(-2px);
+  box-shadow: var(--sh-sm);
+}
+
+.dlazdice:active {
+  cursor: grabbing;
+}
+
+.dlazdice[data-vybrany="true"] {
+  border-color: var(--blue);
+  background: var(--sky);
+  box-shadow: 0 0 0 3px rgba(13, 94, 175, 0.16);
+}
+
+.dlazdice-typ {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dlazdice-nazev {
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.3;
+}
+
+.dlazdice-kcal {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.duch {
+  position: fixed;
+  z-index: 100;
+  transform: translate(-50%, -140%);
+  pointer-events: none;
+  background: var(--blue);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 999px;
+  box-shadow: var(--sh-blue);
+  white-space: nowrap;
+}
+
+.dlazdice {
+  touch-action: pan-y;
+}
+
+.planovac-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.paleta-panel {
+  position: sticky;
+  top: 74px;
+}
+
+.paleta-panel .paleta {
+  grid-template-columns: 1fr;
+  max-height: calc(100vh - 340px);
+  min-height: 220px;
+}
+
+@media (max-width: 900px) {
+  .planovac-layout {
+    grid-template-columns: 1fr;
+  }
+  .paleta-panel {
+    position: static;
+  }
+  .paleta-panel .paleta {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    max-height: 380px;
+  }
+}
